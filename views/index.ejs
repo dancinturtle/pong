@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html>
+<head>
+	<title>PONG</title>
+	<script src="https://ajax.googleapis.com/ajax/libs/jquery/2.2.4/jquery.min.js"></script>
+
+	<!-- Latest compiled and minified CSS -->
+<link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.6/css/bootstrap.min.css" integrity="sha384-1q8mTJOASx8j1Au+a5WDVnPi2lkFfwwEAa8hDDdjZlpLegxhjVME1fgjWPGmkzs7" crossorigin="anonymous">
+
+<!-- Optional theme -->
+<link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.6/css/bootstrap-theme.min.css" integrity="sha384-fLW2N01lMqjakBkx3l/M9EahuwpSfeNvV63J5ezn3uZzapT0u7EYsXMjQV+0En5r" crossorigin="anonymous">
+
+<!-- Latest compiled and minified JavaScript -->
+<script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.6/js/bootstrap.min.js" integrity="sha384-0mSbJDEHialfmuBBQP6A4Qrprq5OVfW37PRR3j5ELqxss1yVqOtnepnHVP9aJ7xS" crossorigin="anonymous"></script>
+<script type='text/javascript' src="/socket.io/socket.io.js"></script>
+<style>
+	#svg {
+		width: 850px;
+		height: 800px;
+		border: 1px solid black;
+	}
+	.inline {
+		display: inline-block;
+	}
+	.redtext {
+		color:red;
+	}
+	.bluetext {
+		color: blue;
+	}
+</style>
+</head>
+<body>
+
+	<div class="container">
+		<h1 class="jumbotron">Multi player pong</h1>
+		<div class="loggedIn" align="right">
+			<p class="inline">Logged in as: <span id="playerName"></span>, ID: <span id="playerID"></span></p>
+			<button class="inline btn btn-warning">Quit</button>
+		</div>
+		<div class="row">
+			<div class="col-md-9">
+				<div class="row">
+					<div class="col-md-4">
+						<h3 class="redtext">QBert</h3>
+					</div>
+					<div class="col-md-2">
+						<h2>VS</h2>
+					</div>
+					<div class="col-md-4">
+						<h3 class="bluetext">Kevin</h3>
+					</div>
+				</div>
+				<div class="row">
+					<svg id="svg" xmlns="http://www.w3.org/2000/svg">
+						<image id="red" xlink:href="/images/red.jpg" height="200px" width="50px" x="5" y="300"></image>
+				    <image id="blue" xlink:href="/images/blue.png" height="200px" width="50px" y="300px" x="800px"></image>
+					</svg>
+				</div>
+			</div>
+			<div class="col-md-3">
+				<div class="row">
+					<div class="col-md-12">
+						<h4>Challenge a player!</h4>
+						<div id="challengers">
+						</div>
+						<h4>Other games</h4>
+						<div id="otherGames">
+							<p><a href="#">Oscar vs Jim</a></p>
+							<p><a href="#">Mary vs Mike</a></p>
+							<p><a href="#">Snail vs Slug</a></p>
+						</div>
+
+					</div>
+				</div>
+			</div>
+		</div>
+	</div>
+
+
+
+<script>
+	$(document).ready(function(){
+		var socket = io.connect();
+		var player = {name: null, sid: null};
+		player.name = prompt("Please enter your name");
+		socket.emit("newPlayer", {name: player.name});
+		//new player is accepted, display player's info
+		socket.on('playerID', function(data){
+			player.sid = data.sid;
+			console.log("the new player joined", player);
+			$('#playerID').text(player.sid);
+			$('#playerName').text(player.name);
+		})
+		socket.on('updated_players', function(data){
+			var challengerString = "<p";
+			for(var i=0; i<data.response.length; i++){
+				if(data.response[i].sid != player.sid){
+					challengerString += " id = '";
+					challengerString += data.response[i].sid;
+					challengerString += "'>";
+					challengerString += data.response[i].name;
+					challengerString += "</p><p";
+				}
+			}
+			challengerString += "></p>";
+			$('#challengers').html(challengerString);
+		})
+		$('#challengers').on("click", "p", function(){
+			console.log("challenging", $(this).attr("id"));
+			var taunt = confirm("Would you like to challenge " + $(this).text() + "?");
+			if(taunt == true){
+				socket.emit("newChallenge", {challenged: $(this).attr("id"), challengerID: player.sid, challengerName: player.name});
+				console.log("challenge sent out");
+			}
+			else if(taunt == false){
+				console.log("chicken");
+			}
+		})
+		socket.on('youAreChallenged', function(data){
+			console.log("you've been challenged");
+			var accept = confirm("You've been challenged by " + data.challengerName + ". Would you like to accept?");
+			if(accept == true){
+				console.log("Accepted!");
+				socket.emit("acceptChallenge", {challenged: player.sid, challenger: data.challengerID});
+			}
+			else if(accept == false){
+				console.log("You ran away!");
+			}
+		})
+		socket.on('startFight', function(data){
+			console.log("You are in a fight", data.message);
+		})
+
+
+	})
+
+</script>
+	<!-- <script>
+		$(document).ready(function(){
+			var socket = io.connect();
+			var player = {name: null, id: null};
+			var name = prompt("Please enter your name");
+			socket.emit("newPlayer", {name: name});
+
+			$('#quit').click(function(){
+				console.log(player.name, "quitting");
+				socket.emit("playerQuit", {player: player});
+			})
+			document.onkeydown = function(e){
+				if(e.keyCode==75){
+					var curr = parseFloat($('#red').attr("y"));
+					// $('#red').attr("y", curr-10);
+					socket.emit('redUp', {redY: curr-10});
+				}
+				if(e.keyCode == 77){
+					console.log($('#red').attr("y"));
+					var currt = parseFloat($('#red').attr("y"));
+					// $('#red').attr("y", currt+10);
+					socket.emit('redDown', {redY: currt+10});
+				}
+				// console.log("keydown", e.keyCode);
+			}
+
+			socket.on('updated_players', function(data){
+				console.log(data.response);
+				var htmlString = "<p>";
+				for(var i=0; i<2; i++){
+					htmlString += data.response[i].name + " ";
+				}
+				htmlString += "</p>";
+				$('#players').html(htmlString);
+				if(data.response.length > 2){
+					var waitString = "<p>";
+					for(var j=2; j<data.response.length; j++){
+						waitString += data.response[j].name + " ";
+					}
+					waitString += "</p>";
+					$('#waiting').html(waitString);
+				}
+			})
+			socket.on('playerID', function(data){
+				player.name = data.name;
+				player.id = data.id;
+				console.log("the new player joined", player);
+				$('#playerID').html(data.id);
+			})
+			// var count = $('#counting').text();
+			// console.log("The count displayed", count);
+
+			// $('#epicButton').click(function(){
+			// 	var count = $('#counting').text();
+			// 	count++;
+			// 	socket.emit('epicButtonPressed', {pressCount: count})
+			// 	//code goes here
+			// });
+			// $('#resetButton').click(function(){
+			// 	notCount;
+			// 	count = 0;
+			// 	socket.emit('resetButtonPressed', {reset: count})
+			// 	//code goes here
+			// });
+
+			socket.on('updated_red', function(data){
+				// console.log('The server says: ' + data.response);
+				$('#red').attr("y", data.response);
+			});
+			// socket.on('updated_notCount', function(data){
+			//
+			// 	// console.log('The server says: ' + data.response);
+			// 	$('#counting').html(data.response);
+			// })
+
+
+
+
+
+
+		});//close document.ready
+	</script> -->
+</body>
+</html>
