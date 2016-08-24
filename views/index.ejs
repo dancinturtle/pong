@@ -18,6 +18,7 @@
 		width: 850px;
 		height: 800px;
 		border: 1px solid black;
+		display: none;
 	}
 	.inline {
 		display: inline-block;
@@ -27,6 +28,9 @@
 	}
 	.bluetext {
 		color: blue;
+	}
+	#titleNames {
+		display: none;
 	}
 </style>
 </head>
@@ -40,15 +44,15 @@
 		</div>
 		<div class="row">
 			<div class="col-md-9">
-				<div class="row">
+				<div class="row" id="titleNames">
 					<div class="col-md-4">
-						<h3 class="redtext">QBert</h3>
+						<h3 class="redtext" id="bulbasaur"></h3>
 					</div>
 					<div class="col-md-2">
 						<h2>VS</h2>
 					</div>
 					<div class="col-md-4">
-						<h3 class="bluetext">Kevin</h3>
+						<h3 class="bluetext" id="charmander"></h3>
 					</div>
 				</div>
 				<div class="row">
@@ -64,8 +68,8 @@
 						<h4>Challenge a player!</h4>
 						<div id="challengers">
 						</div>
-						<h4>Other games</h4>
-						<div id="otherGames">
+						<h4>Current games</h4>
+						<div id="currentGames">
 							<p><a href="#">Oscar vs Jim</a></p>
 							<p><a href="#">Mary vs Mike</a></p>
 							<p><a href="#">Snail vs Slug</a></p>
@@ -82,7 +86,8 @@
 <script>
 	$(document).ready(function(){
 		var socket = io.connect();
-		var player = {name: null, sid: null};
+		var player = {name: null, sid: null, room: null};
+		var competitor = {name: null, sid: null};
 		player.name = prompt("Please enter your name");
 		socket.emit("newPlayer", {name: player.name});
 		//new player is accepted, display player's info
@@ -93,6 +98,7 @@
 			$('#playerName').text(player.name);
 		})
 		socket.on('updated_players', function(data){
+			console.log("updating players", data);
 			var challengerString = "<p";
 			for(var i=0; i<data.response.length; i++){
 				if(data.response[i].sid != player.sid){
@@ -117,23 +123,61 @@
 				console.log("chicken");
 			}
 		})
+		//when someone is challenged, receive pop up to find out if they accept
 		socket.on('youAreChallenged', function(data){
 			console.log("you've been challenged");
 			var accept = confirm("You've been challenged by " + data.challengerName + ". Would you like to accept?");
 			if(accept == true){
-				console.log("Accepted!");
-				socket.emit("acceptChallenge", {challenged: player.sid, challenger: data.challengerID});
+				socket.emit("acceptChallenge", {challenged: player.sid, challengedName: player.name, challenger: data.challengerID});
+				competitor.name = data.challengerName;
+				competitor.sid = data.challengerID;
+				console.log("The competitor is ", competitor);
 			}
 			else if(accept == false){
-				console.log("You ran away!");
+				socket.emit("denyChallenge", {challengedName: player.name, challenger:data.challengerID});
 			}
 		})
-		socket.on('startFight', function(data){
-			console.log("You are in a fight", data.message);
+		socket.on('challengeDenied', function(data){
+			alert(data.denier + " has denied your challenge.");
 		})
+		socket.on('startFight', function(data){
+			console.log("You are in a fight");
+			$('#svg').attr("style", "display: block");
+			$('#titleNames').attr('style', 'display: block');
+			$('#bulbasaur').html(data.game.challenger.name);
+			$('#charmander').html(data.game.challenged.name);
+		})
+		//now the challenger is informed that challenge is accepted
+		socket.on('yourChallengeIsAccepted', function(data){
+			console.log("Challenge accepted");
+			var meetUp = confirm(data.challenged + " accepted your challenge and is ready to play.");
+			if(meetUp == true){
 
+				competitor.name = data.challenged;
+				competitor.sid = data.challengedID;
+				socket.emit('meetUp', {challenger: player.name, challengerID: player.sid, challenged: competitor.name, challengedID: competitor.sid});
+			}
+			else if(meetUp == false){
+				console.log("What the hell?");
+			}
+		})
+		socket.on('updated_games', function(data){
+			console.log("UPDATING GAMES", data);
+			var gameString = "<p";
+			for(var i=0; i<data.games.length; i++){
+				gameString += " id = '";
+				gameString += data.games[i].room;
+				gameString += "'>";
+				gameString += data.games[i].challenger.name;
+				gameString += " vs ";
+				gameString += data.games[i].challenged.name;
+				gameString += "</p><p";
+			}
+			$('#currentGames').html(gameString);
 
 	})
+});
+
 
 </script>
 	<!-- <script>

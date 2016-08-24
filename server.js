@@ -40,8 +40,19 @@ var server = app.listen(8000, function(){
 
 var io = require('socket.io').listen(server);
 var allPlayers = [];
+var availablePlayers = [];
+var games = [];
+function Player(name, sid){
+	this.name = name,
+	this.sid = sid,
+	this.opponent = {name: null, sid: null}
+}
+function Game(room, challengedName, challengedSID, challengerName, challengerSID){
+	this.room = room,
+	this.challenged = {name: challengedName, sid: challengedSID},
+	this.challenger = {name: challengerName, sid: challengerSID}
+}
 io.sockets.on('connection', function(socket){
-  console.log('a user connected', socket.id);
 	//disconnecting
   socket.on('disconnect', function(){
 		//want to remove the player from allPlayers with this socket id
@@ -56,33 +67,101 @@ io.sockets.on('connection', function(socket){
 		if(index != "none"){
 			allPlayers.splice(index, 1);
 		}
-		io.emit('updated_players', {response: allPlayers});
+		var avindex = "none";
+		for(var j=0; j<availablePlayers.length; j++){
+			if(availablePlayers[j].sid == socket.id){
+				avindex = j;
+				break;
+			}
+		}
+		if (avindex != "none"){
+			availablePlayers.splice(avindex, 1);
+		}
+		var gameindex = "none";
+		for(var g=0; g<games.length; g++){
+			if(games[g].challenged.sid == socket.id || games[g].challenger.sid == socket.id){
+				gameindex = g;
+				break;
+			}
+		}
+		if(gameindex != 'none'){
+			games.splice(gameindex, 1);
+		}
+		io.emit('updated_players', {response: availablePlayers});
   });
 	//newplayer joins
 
 	socket.on('newPlayer', function(data){
-			var newPlayer = {name: null, sid: null};
-			newPlayer.name = data.name;
-			newPlayer.sid = socket.id;
+			var newPlayer = new Player(data.name, socket.id);
 			allPlayers.push(newPlayer);
-			console.log("all the players", allPlayers);
+			availablePlayers.push(newPlayer);
+			console.log("all the availalbe players", availablePlayers);
 			socket.emit('playerID', {sid: newPlayer.sid});
-			io.emit('updated_players', {response: allPlayers});
+			io.emit('updated_players', {response: availablePlayers});
 		})
-
+//when someone makes a new challenge
 	socket.on('newChallenge', function(data){
 		console.log("challenge against", data.challenged);
+		//notify person they've been challenged, find out if they accept
 		io.to(data.challenged).emit('youAreChallenged', {challengerName: data.challengerName, challengerID: data.challengerID});
 	})
-	io.on('acceptChallenge', function(socket){
+	//when someone denies the challenge
+	socket.on('denyChallenge', function(data){
+		io.to(data.challenger).emit('challengeDenied', {denier: data.challengedName})
+	})
+	//the challenged accepts, remove the challenged from availablePlayers array
+	socket.on('acceptChallenge', function(data){
 		console.log("challenge accepted");
-		// var challenged = data.challenged;
-		// var challenger = data.challenger;
-		// io.on('connection', function(challenged){
-  		socket.join('tournament');
-			io.to('tournament').emit('startFight', {message: "Hello"});
-		// });
+		for(var k=0; k<availablePlayers.length; k++){
+			if(availablePlayers[k].sid==data.challenged){
+				var temp = availablePlayers[k];
+				for(var o=0; o<availablePlayers.length; o++){
+					if(availablePlayers[o].sid == data.challenger){
+						var op = availablePlayers[o];
+						break;
+					}
+				}
+				temp.opponent.sid = op.sid;
+				temp.opponent.name = op.name;
+				op.opponent.sid = temp.sid;
+				op.opponent.name = temp.name;
+				console.log("The challenged", temp);
+				console.log("The challenger", op);
+				for(var m=k; m<availablePlayers.length-1; m++){
+					availablePlayers[m] = availablePlayers[m+1];
+				}
+				availablePlayers[availablePlayers.length-1] = temp;
+				availablePlayers.pop();
+				break;
+			}
+		}
+			io.emit('updated_players', {response: availablePlayers});
 
+			var newRoom = data.challenger + data.challenged;
+  		socket.join(newRoom);
+			io.to(data.challenger).emit('yourChallengeIsAccepted', {challenged: data.challengedName, challengedID: data.challenged});
+			// io.to(newRoom).emit('startFight', {message: "Hello"});
+
+
+	})
+	socket.on('meetUp', function(data){
+		var playerIndex = "none";
+		for(var k=0; k<availablePlayers.length; k++){
+			if(availablePlayers[k].sid==data.challengerID){
+				playerIndex = k;
+				break;
+			}
+		}
+		if(playerIndex != "none"){
+			availablePlayers.splice(playerIndex, 1);
+		}
+		io.emit('updated_players', {response: availablePlayers});
+		var roomName = data.challengerID + data.challengedID;
+		var newGame = new Game(roomName, data.challenged, data.challengedID, data.challenger, data.challengerID);
+		games.push(newGame);
+		io.emit('updated_games', {games: games});
+		socket.join(roomName);
+		io.to(roomName).emit('startFight', {game: newGame});
 	})
 });
 
